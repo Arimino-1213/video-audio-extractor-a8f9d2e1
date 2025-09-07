@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Audio Extractor - Click During Play Fixed</title>
+    <title>Video Audio Extractor - Speed Control Edition</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
     <style>
@@ -165,6 +165,83 @@
             opacity: 0;
             transition: opacity 0.3s ease;
         }
+
+        .speed-control {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+
+        .speed-slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.2);
+            outline: none;
+            -webkit-appearance: none;
+            appearance: none;
+            cursor: pointer;
+        }
+
+        .speed-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
+            cursor: pointer;
+            border: 2px solid white;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+        }
+
+        .speed-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
+            cursor: pointer;
+            border: 2px solid white;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+        }
+
+        .speed-display {
+            text-align: center;
+            color: #64ffda;
+            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        .speed-presets {
+            display: flex;
+            justify-content: space-between;
+            gap: 5px;
+            margin-top: 10px;
+        }
+
+        .speed-preset-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 5px;
+            color: white;
+            padding: 5px 10px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            flex: 1;
+        }
+
+        .speed-preset-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: #667eea;
+        }
+
+        .speed-preset-btn.active {
+            background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
+            border-color: #667eea;
+        }
     </style>
 </head>
 <body class="p-4">
@@ -223,6 +300,25 @@
                     <button id="downloadBtn" class="control-button w-full" disabled>
                         <i class="fas fa-download mr-2"></i>音声をダウンロード
                     </button>
+                </div>
+
+                <!-- Speed Control -->
+                <div class="speed-control">
+                    <h4 class="text-white font-bold mb-3">
+                        <i class="fas fa-tachometer-alt mr-2"></i>再生速度調整
+                    </h4>
+                    <div class="speed-display" id="speedDisplay">1.0x</div>
+                    <input type="range" class="speed-slider" id="speedSlider" 
+                           min="0.25" max="2.0" step="0.25" value="1.0">
+                    <div class="speed-presets">
+                        <button class="speed-preset-btn" data-speed="0.25">0.25x</button>
+                        <button class="speed-preset-btn" data-speed="0.5">0.5x</button>
+                        <button class="speed-preset-btn" data-speed="0.75">0.75x</button>
+                        <button class="speed-preset-btn active" data-speed="1.0">1.0x</button>
+                        <button class="speed-preset-btn" data-speed="1.25">1.25x</button>
+                        <button class="speed-preset-btn" data-speed="1.5">1.5x</button>
+                        <button class="speed-preset-btn" data-speed="2.0">2.0x</button>
+                    </div>
                 </div>
                 
                 <div class="info-display mt-4">
@@ -287,7 +383,8 @@
                 this.currentVideoFile = null;
                 this.isDragging = false;
                 this.wasPlayingBeforeDrag = false;
-                this.isClickSeeking = false; // Flag to handle click-seeking during playback
+                this.isClickSeeking = false;
+                this.playbackRate = 1.0; // New: Speed control
                 
                 this.initializeElements();
                 this.setupEventListeners();
@@ -309,6 +406,11 @@
                 this.progressBar = document.getElementById('progressBar');
                 this.progressFill = document.getElementById('progressFill');
                 this.statusText = document.getElementById('statusText');
+                
+                // Speed control elements
+                this.speedSlider = document.getElementById('speedSlider');
+                this.speedDisplay = document.getElementById('speedDisplay');
+                this.speedPresetBtns = document.querySelectorAll('.speed-preset-btn');
                 
                 // Info displays
                 this.rmsValue = document.getElementById('rmsValue');
@@ -348,6 +450,15 @@
                 this.playBtn.addEventListener('click', () => this.togglePlayback());
                 this.downloadBtn.addEventListener('click', () => this.downloadAudio());
                 
+                // Speed control events
+                this.speedSlider.addEventListener('input', (e) => this.handleSpeedChange(parseFloat(e.target.value)));
+                this.speedPresetBtns.forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const speed = parseFloat(e.target.dataset.speed);
+                        this.handleSpeedChange(speed);
+                    });
+                });
+                
                 // Waveform click and drag
                 this.waveformCanvas.addEventListener('click', (e) => this.handleWaveformClick(e));
                 this.waveformCanvas.addEventListener('mousemove', (e) => this.showClickPreview(e));
@@ -357,6 +468,35 @@
                 this.playbackLine.addEventListener('mousedown', (e) => this.startDrag(e));
                 document.addEventListener('mousemove', (e) => this.onDrag(e));
                 document.addEventListener('mouseup', () => this.endDrag());
+            }
+
+            handleSpeedChange(speed) {
+                this.playbackRate = speed;
+                this.speedSlider.value = speed;
+                this.speedDisplay.textContent = speed + 'x';
+                
+                // Update active preset button
+                this.speedPresetBtns.forEach(btn => {
+                    btn.classList.remove('active');
+                    if (parseFloat(btn.dataset.speed) === speed) {
+                        btn.classList.add('active');
+                    }
+                });
+                
+                // If currently playing, restart with new speed
+                if (this.isPlaying && this.audioSource) {
+                    const currentTime = this.getCurrentPlaybackTime();
+                    this.stopPlayback();
+                    this.pauseTime = currentTime;
+                    setTimeout(() => {
+                        this.startPlayback();
+                    }, 50);
+                }
+            }
+
+            getCurrentPlaybackTime() {
+                if (!this.isPlaying || !this.audioContext) return this.pauseTime || 0;
+                return this.pauseTime + (this.audioContext.currentTime - this.startTime) * this.playbackRate;
             }
 
             showClickPreview(e) {
@@ -598,6 +738,7 @@
                     this.analyser = this.audioContext.createAnalyser();
                     
                     this.audioSource.buffer = this.audioBuffer;
+                    this.audioSource.playbackRate.value = this.playbackRate; // Apply speed control
                     this.audioSource.connect(this.analyser);
                     this.analyser.connect(this.audioContext.destination);
                     
@@ -605,14 +746,14 @@
                     
                     const offset = this.pauseTime || 0;
                     this.audioSource.start(0, offset);
-                    this.startTime = this.audioContext.currentTime - offset;
+                    this.startTime = this.audioContext.currentTime - (offset / this.playbackRate);
                     
                     this.isPlaying = true;
                     this.playBtn.innerHTML = '<i class="fas fa-pause mr-2"></i>停止';
                     this.playbackLine.style.display = 'block';
                     
                     this.audioSource.onended = () => {
-                        if (!this.isClickSeeking) {  // Only reset if not in the middle of seeking
+                        if (!this.isClickSeeking) {
                             this.stopPlayback();
                             this.pauseTime = 0;
                         }
@@ -636,9 +777,9 @@
                     cancelAnimationFrame(this.animationId);
                 }
                 
-                // Only update pause time if we're not in the middle of seeking operations
+                // Update pause time considering playback rate
                 if (this.isPlaying && !this.isDragging && !this.isClickSeeking) {
-                    const currentTime = this.audioContext.currentTime - this.startTime;
+                    const currentTime = (this.audioContext.currentTime - this.startTime) * this.playbackRate;
                     this.pauseTime = Math.min(currentTime, this.audioBuffer.duration);
                 }
                 
@@ -653,7 +794,7 @@
             updatePlayback() {
                 if (!this.isPlaying || this.isDragging) return;
                 
-                const currentTime = this.audioContext.currentTime - this.startTime;
+                const currentTime = (this.audioContext.currentTime - this.startTime) * this.playbackRate;
                 const progress = Math.min(currentTime / this.audioBuffer.duration, 1);
                 
                 // Update playback line position
@@ -884,14 +1025,14 @@
             new VideoAudioExtractor();
         });
     </script>
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/vcd15cbe7772f49c399c6a5babf22c1241717689176015" integrity="sha512-ZpsOmlRQV6y907TI0dKBHq9Md29nnaEIPlkf84rnaERnq6zvWvPUqr2ft8M1aS28oN72PdrCzSjY4U6VaAw1EQ==" data-cf-beacon='{"rayId":"97b33ce588bbeb7c","serverTiming":{"name":{"cfExtPri":true,"cfEdge":true,"cfOrigin":true,"cfL4":true,"cfSpeedBrain":true,"cfCacheStatus":true}},"version":"2025.8.0","token":"4edd5f8ec12a48cfa682ab8261b80a79"}' crossorigin="anonymous"></script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/vcd15cbe7772f49c399c6a5babf22c1241717689176015" integrity="sha512-ZpsOmlRQV6y907TI0dKBHq9Md29nnaEIPlkf84rnaERnq6zvWvPUqr2ft8M1aS28oN72PdrCzSjY4U6VaAw1EQ==" data-cf-beacon='{"rayId":"97b352d018d9d787","serverTiming":{"name":{"cfExtPri":true,"cfEdge":true,"cfOrigin":true,"cfL4":true,"cfSpeedBrain":true,"cfCacheStatus":true}},"version":"2025.8.0","token":"4edd5f8ec12a48cfa682ab8261b80a79"}' crossorigin="anonymous"></script>
 </body>
 </html>
     <script id="html_badge_script1">
         window.__genspark_remove_badge_link = "https://www.genspark.ai/api/html_badge/" +
-            "remove_badge?token=To%2FBnjzloZ3UfQdcSaYfDiCBg3Mw1xWBGLihjQIgm6Ql%2BlqytmybnWje4ZNwLepSk01tF%2BlMLVsn7ZY69Y3vdNWh2l14yp7zBbqnReq%2FCVMBW8%2BXANozybyhB8jDs9OfsMNU4uawS9Kb7x16SqFL4Hqd65l7M71MXOu2%2BOCFETQi%2FhjW0yb8wmWOfm3z7d2%2B9lqiseJByqFWC%2BmqYv%2Fkat%2FZ%2BWseaPlkmU%2FQCXGsV298uhTG5YCgWh9V7U5oVblXSJ082y3y%2BJq4xROM%2FzdkZt%2F9NOV3i3dtzZuR%2F3vhlvc4lfAQbI%2B1oVVAR0jzPAWJYrP%2ByX52stHEzWyLfjYhWVOpoJPWL4y2KSmvZfipqL8v%2BuAQAcUGPjEx04nE2cCHpMRIHkN5NnEasQGrqgEMcm8cUcml92o9TC9n9935AXNRhhYgkd3pAH9h0lYd30kzpp6mLXAmW64A2VuXlfAHR8unpXR0AaIfgnGz9mmI8E3h7F4Ooln4wijVldWF8j7ctAr0QaH7gUKiBoAWHQOcaQ%3D%3D";
+            "remove_badge?token=To%2FBnjzloZ3UfQdcSaYfDmI%2B1JQueE0ggjBhE9H1sBjGfdYy0%2BjfF%2F%2F4oVxNeJsvaFu%2BzRfaCoabEbFs4XLlKtY9dZrlI05fDUP3MJm7mpfHUH%2FIIvtyDtFmogOb0lSDm0veOmLGoEZdOm%2FLtxvoryQRMqDuyfY1xFnh7g%2BWR9W8lVDXdofJVQqmra7h0R6UXbC%2FT6NAoLAUvEzcza6axfY37KUdFrcZDnodPyj9WNMh57Wk9c6pot5xfO270J5FMuOMgzCY70bn2Z9bFVHmUnCfEtuOoy6aNYcV5y2NnxyRy9sCRPfXKXYg3MmCJmVpyxFDm0io2WaQ3c2u%2Fec6EShmPX7Zqt76H%2FCHR9Xvvanuednqx%2F8OWIfeQOATcpgf0EwyGcbp3TmsWd8ubqDAYrn1jMjwsiuM6gHLGUDYaVXyqSV%2FrWH8forQ6dbdoeNrAseVWT9488CxDBv5l2%2BgSunTuo8a%2BA0b5aeWscldt0%2Bcj5wX87rf%2BItIlQj4xRF66N0mSm1yf%2FBb7abaXAodDej9c8YWYhS5yN1OLjh0sko%3D";
         window.__genspark_locale = "ja-JP";
-        window.__genspark_token = "To/BnjzloZ3UfQdcSaYfDiCBg3Mw1xWBGLihjQIgm6Ql+lqytmybnWje4ZNwLepSk01tF+lMLVsn7ZY69Y3vdNWh2l14yp7zBbqnReq/CVMBW8+XANozybyhB8jDs9OfsMNU4uawS9Kb7x16SqFL4Hqd65l7M71MXOu2+OCFETQi/hjW0yb8wmWOfm3z7d2+9lqiseJByqFWC+mqYv/kat/Z+WseaPlkmU/QCXGsV298uhTG5YCgWh9V7U5oVblXSJ082y3y+Jq4xROM/zdkZt/9NOV3i3dtzZuR/3vhlvc4lfAQbI+1oVVAR0jzPAWJYrP+yX52stHEzWyLfjYhWVOpoJPWL4y2KSmvZfipqL8v+uAQAcUGPjEx04nE2cCHpMRIHkN5NnEasQGrqgEMcm8cUcml92o9TC9n9935AXNRhhYgkd3pAH9h0lYd30kzpp6mLXAmW64A2VuXlfAHR8unpXR0AaIfgnGz9mmI8E3h7F4Ooln4wijVldWF8j7ctAr0QaH7gUKiBoAWHQOcaQ==";
+        window.__genspark_token = "To/BnjzloZ3UfQdcSaYfDmI+1JQueE0ggjBhE9H1sBjGfdYy0+jfF//4oVxNeJsvaFu+zRfaCoabEbFs4XLlKtY9dZrlI05fDUP3MJm7mpfHUH/IIvtyDtFmogOb0lSDm0veOmLGoEZdOm/LtxvoryQRMqDuyfY1xFnh7g+WR9W8lVDXdofJVQqmra7h0R6UXbC/T6NAoLAUvEzcza6axfY37KUdFrcZDnodPyj9WNMh57Wk9c6pot5xfO270J5FMuOMgzCY70bn2Z9bFVHmUnCfEtuOoy6aNYcV5y2NnxyRy9sCRPfXKXYg3MmCJmVpyxFDm0io2WaQ3c2u/ec6EShmPX7Zqt76H/CHR9Xvvanuednqx/8OWIfeQOATcpgf0EwyGcbp3TmsWd8ubqDAYrn1jMjwsiuM6gHLGUDYaVXyqSV/rWH8forQ6dbdoeNrAseVWT9488CxDBv5l2+gSunTuo8a+A0b5aeWscldt0+cj5wX87rf+ItIlQj4xRF66N0mSm1yf/Bb7abaXAodDej9c8YWYhS5yN1OLjh0sko=";
     </script>
     
     <script id="html_notice_dialog_script" src="https://www.genspark.ai/notice_dialog.js"></script>
